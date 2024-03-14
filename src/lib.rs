@@ -3,7 +3,7 @@ mod routers;
 mod store;
 mod utils;
 
-use components::{example::ExampleComponent, home::Home};
+use components::{auth::AuthComponent, example::ExampleComponent, home::Home};
 use routers::router::Router;
 use wasm_bindgen::prelude::*;
 
@@ -16,6 +16,7 @@ pub fn main() -> Result<(), JsValue> {
     router.add_route("/about", Box::new(ExampleComponent::new("About Page")));
     router.add_route("/contact", Box::new(ExampleComponent::new("Contact Page")));
     router.add_route("/home", Box::new(Home::new()));
+    router.add_route("/auth", Box::new(AuthComponent::new()));
 
     // Get current path and render corresponding component
     let location = web_sys::window().unwrap().location();

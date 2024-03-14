@@ -39,6 +39,11 @@ impl Element {
         self
     }
 
+    pub fn child(self, child: HtmlElement) -> HtmlElement {
+        let _ = self.element.append_child(&child);
+        self.element
+    }
+
     pub fn build(self) -> HtmlElement {
         self.element
     }
