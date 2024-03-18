@@ -25,3 +25,29 @@ where
     }
     get()
 }
+
+pub fn set<T>(data: T)
+where
+    T: 'static + Default + Send + core::marker::Sync,
+{
+    {
+        let mut globals = GLOBALS_LIST.lock();
+        let type_id = TypeId::of::<T>();
+        let mut found_index = None;
+
+        for (index, &stored_type_id) in globals.iter().enumerate() {
+            if stored_type_id.0 == type_id {
+                found_index = Some(index);
+                break;
+            }
+        }
+
+        if let Some(index) = found_index {
+            globals.pop_back();
+        }
+
+        let updated_mutex = Box::new(Mutex::new(data));
+        let leaked_mutex = Box::leak(updated_mutex);
+        globals.push_front((type_id, leaked_mutex));
+    }
+}

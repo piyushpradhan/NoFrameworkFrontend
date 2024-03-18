@@ -39,12 +39,13 @@ impl Element {
         self
     }
 
-    pub fn child(self, child: HtmlElement) -> HtmlElement {
+    pub fn child(&mut self, child: HtmlElement) -> &mut Self {
         let _ = self.element.append_child(&child);
-        self.element
+        self
     }
 
-    pub fn build(self) -> HtmlElement {
-        self.element
+    pub fn build(&mut self) -> HtmlElement {
+        let element = self.element.clone();
+        element
     }
 }

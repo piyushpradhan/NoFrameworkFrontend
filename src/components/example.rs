@@ -26,7 +26,7 @@ impl ExampleComponent {
 
         let router = store::get::<Router>();
 
-        router.render("/home");
+        router.render("/login");
     }
 }
 
@@ -41,20 +41,16 @@ impl Component for ExampleComponent {
             .unwrap();
 
         let mut button = Element::new("button");
-        button
-            .set(|btn: &HtmlElement| {
-                btn.set_inner_html("This works!");
-            })
-            .set(|btn: &HtmlElement| {
-                let handler = Closure::wrap(Box::new(move |_event: MouseEvent| {
-                    component.handle_click();
-                }) as Box<dyn FnMut(_)>);
+        button.set(|btn: &HtmlElement| {
+            btn.set_inner_html("This works!");
+            let handler = Closure::wrap(Box::new(move |_event: MouseEvent| {
+                component.handle_click();
+            }) as Box<dyn FnMut(_)>);
 
-                let _ =
-                    btn.add_event_listener_with_callback("click", handler.as_ref().unchecked_ref());
+            let _ = btn.add_event_listener_with_callback("click", handler.as_ref().unchecked_ref());
 
-                handler.forget();
-            });
+            handler.forget();
+        });
 
         container.append_child(&button.build()).unwrap();
 
