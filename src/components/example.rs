@@ -4,6 +4,7 @@ use web_sys::MouseEvent;
 use web_sys::{window, HtmlElement};
 
 use super::component::Component;
+use crate::models::user::User;
 use crate::routers::router::Router;
 use crate::store;
 use crate::utils::Element;
@@ -41,6 +42,8 @@ impl Component for ExampleComponent {
             .unwrap();
 
         let mut button = Element::new("button");
+        let mut user_details = Element::new("p");
+        let current_user = store::get::<User>();
         button.set(|btn: &HtmlElement| {
             btn.set_inner_html("This works!");
             let handler = Closure::wrap(Box::new(move |_event: MouseEvent| {
@@ -51,8 +54,12 @@ impl Component for ExampleComponent {
 
             handler.forget();
         });
+        user_details.set(|p: &HtmlElement| {
+            p.set_inner_html(&current_user.username);
+        });
 
         container.append_child(&button.build()).unwrap();
+        container.append_child(&user_details.build()).unwrap();
 
         let p = document
             .create_element("p")

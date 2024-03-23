@@ -3,7 +3,8 @@ use web_sys::{window, HtmlElement};
 
 use crate::{store, utils::Element};
 
-use super::{auth::user::User, component::Component};
+use super::component::Component;
+use crate::models::user::User;
 
 pub struct Home {}
 
@@ -29,7 +30,7 @@ impl Component for Home {
 
         let user_details = Element::new("p")
             .set(|p: &HtmlElement| {
-                let mut user = store::get::<User>();
+                let user = store::get::<User>();
                 p.set_inner_html(&user.username);
             })
             .build();

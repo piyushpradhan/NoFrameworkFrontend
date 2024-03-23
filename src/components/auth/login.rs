@@ -1,17 +1,20 @@
+use reqwest::cookie::Jar;
+use reqwest::{Client, Url};
 use serde_json;
 use std::collections::HashMap;
-use tokio::runtime::Handle;
-use tokio::sync::oneshot;
+use std::sync::Arc;
 
+use reqwest::header::{HeaderValue, CONTENT_TYPE};
 use wasm_bindgen::prelude::*;
-use web_sys::{window, HtmlElement, MouseEvent};
+use web_sys::{window, Event, HtmlElement};
 
 use crate::components::component::Component;
 use crate::routers::router::Router;
 use crate::store;
-use crate::utils::Element;
+use crate::utils::storage::set_item;
+use crate::utils::{api, Element};
 
-use super::user::User;
+use crate::models::user::User;
 
 #[derive(Debug, serde::Deserialize)]
 struct LoginResponse {
@@ -42,16 +45,36 @@ impl Login {
             "Something went wrong while parsing the user data",
         );
 
-        let client = reqwest::blocking::Client::new();
-        let res = client.post("http://localhost:7878/auth/login").form(&payload).header("Cookie", "token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VybmFtZSI6IlwibGF0ZXN0X3VzZXJcIiIsInVpZCI6MTgsImV4cCI6MTcxMDM4MDUwOH0.4Vx_AP2YLkrkXq5IpByqzZC3eDJvK65dDhWdq-dhxf4;refresh=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VybmFtZSI6IlwibGF0ZXN0X3VzZXJcIiIsInVpZCI6MTcsImV4cCI6MTcxMDU5NzY1OX0.1Knh2-U-QCzvElieLCeHfEW7wbkvSMY2IMmN-OgRJB8eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VybmFtZSI6IlwibGF0ZXN0X3VzZXJcIiIsInVpZCI6MTgsImV4cCI6MTcxMDU5OTMwOH0.KwfERdQgu4PR4T0bDqJeNj9MPP0kP1Mzo7rFxPR2zkI").send();
+        let mut headers = reqwest::header::HeaderMap::new();
 
-        match res {
-            Ok(response) => {
-                if response.status().is_success() {
-                    let body = response.bytes().unwrap();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+        let data = r#"{
+            "username": "latest_user",
+            "password": "strong_password"
+        }"#;
+
+        let json: serde_json::Value = serde_json::from_str(&data).unwrap();
+
+        let response = api::post("http://localhost:7878/auth/login", headers.clone(), json).await;
+
+        match response {
+            Ok(res) => {
+                if res.status().is_success() {
+                    let body = res.bytes().await.unwrap();
                     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
                     let json_response: LoginResponse = serde_json::from_str(&body_str).unwrap();
+
+                    let cookie = format!(
+                        "token={};refresh={}",
+                        json_response.access_token, json_response.refresh_token
+                    );
+
+                    // Set cookie to local storage
+                    let jar = store::get::<Arc<Jar>>();
+                    jar.add_cookie_str(&cookie, &"http://localhost:7878".parse::<Url>().unwrap());
+
                     store::set::<User>(User::new(
                         json_response.id,
                         json_response.username,
@@ -64,6 +87,8 @@ impl Login {
                 println!("Error sending request: {}", err);
             }
         }
+
+        let _ = api::get("http://localhost:7878/test", headers.clone()).await;
 
         router.render("/home");
     }
@@ -79,52 +104,77 @@ impl Component for Login {
             .dyn_into::<HtmlElement>()
             .unwrap();
 
+        let mut heading = Element::new("h2");
         let mut login_form = Element::new("form");
+
+        let mut username_label = Element::new("label");
         let mut username_input = Element::new("input");
+
+        let mut password_label = Element::new("label");
         let mut password_input = Element::new("input");
+
         let mut submit_button = Element::new("button");
 
+        heading.set(|h2: &HtmlElement| {
+            h2.set_inner_text("Login");
+        });
+
+        username_label.set(|label: &HtmlElement| {
+            label.set_attribute("for", "username").unwrap();
+            label.set_inner_text("Username")
+        });
+
         username_input.set(|input: &HtmlElement| {
-            let _ = input.set_attribute("placeholder", "Username");
+            input.set_id("username");
+            input.set_attribute("type", "text").unwrap();
+            input.set_attribute("name", "username").unwrap();
+            input.set_attribute("placeholder", "Username").unwrap();
         });
 
+        password_label.set(|label: &HtmlElement| {
+            label.set_attribute("for", "password").unwrap();
+            label.set_inner_text("Password")
+        });
         password_input.set(|input: &HtmlElement| {
-            let _ = input.set_attribute("placeholder", "Password");
-            let _ = input.set_attribute("type", "password");
+            input.set_id("password");
+            input.set_attribute("type", "password").unwrap();
+            input.set_attribute("name", "password").unwrap();
+            input.set_attribute("placeholder", "password").unwrap();
         });
 
-        let handle = Handle::current();
-        submit_button
-            .set(|button: &HtmlElement| {
-                button.set_inner_text("Submit");
-            })
-            .set(|submit_button: &HtmlElement| {
-                let handle_clone = handle.clone();
-                let handler = Closure::wrap(Box::new(move |_event: MouseEvent| {
-                    login_component.handle_login().await;
-                }) as Box<dyn FnMut(_)>);
-
-                let _ = submit_button
-                    .add_event_listener_with_callback("click", handler.as_ref().unchecked_ref());
-
-                handler.forget();
-            });
+        submit_button.set(|button: &HtmlElement| {
+            button.set_inner_text("Submit");
+            button.set_attribute("type", "submit").unwrap();
+        });
 
         let built_login_form = login_form
             .set(|form: &HtmlElement| {
-                let handler =
-                    Closure::wrap(Box::new(move |_event: MouseEvent| {}) as Box<dyn FnMut(_)>);
+                form.set_attribute("action", "http://localhost:7878/auth/login")
+                    .unwrap();
+                form.set_attribute("method", "POST").unwrap();
+            })
+            .set(|form: &HtmlElement| {
+                let handler = Closure::wrap(Box::new(move |event: Event| {
+                    event.prevent_default();
+                    let _ = wasm_bindgen_futures::future_to_promise(async move {
+                        login_component.handle_login().await;
+                        Ok::<JsValue, JsValue>(JsValue::undefined())
+                    });
+                }) as Box<dyn FnMut(_)>);
 
                 let _ = form
                     .add_event_listener_with_callback("submit", handler.as_ref().unchecked_ref());
 
                 handler.forget();
             })
+            .child(username_label.build())
             .child(username_input.build())
+            .child(password_label.build())
             .child(password_input.build())
             .child(submit_button.build())
             .build();
 
+        container.append_child(&heading.build()).unwrap();
         container.append_child(&built_login_form).unwrap();
 
         container

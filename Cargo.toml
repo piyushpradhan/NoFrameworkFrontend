@@ -9,10 +9,11 @@ crate-type = ["cdylib"]
 [dependencies]
 wasm-bindgen = "0.2.92"
 spin = "0.9"
-reqwest = { version = "0.11.26", features = ["blocking", "json"] }
+reqwest = { version = "0.11.26", features = ["json", "cookies"] }
 serde_json = "1.0.114"
 serde = { version = "1.0.197", features = ["derive"] }
 tokio = { version = "1.36.0" }
+wasm-bindgen-futures = "0.4.42"
 
 [dependencies.web-sys]
 version = "0.3.4"
@@ -24,4 +25,5 @@ features = [
     'Window',
     'MouseEvent',
     'Location',
+    'Storage',
 ]
