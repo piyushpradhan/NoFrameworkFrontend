@@ -21,9 +21,11 @@ features = [
     'Document',
     'Element',
     'HtmlElement',
+    'HtmlInputElement',
     'Node',
     'Window',
     'MouseEvent',
+    'KeyboardEvent',
     'Location',
     'Storage',
 ]

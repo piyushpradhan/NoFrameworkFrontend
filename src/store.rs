@@ -42,7 +42,7 @@ where
             }
         }
 
-        if let Some(index) = found_index {
+        if let Some(_index) = found_index {
             globals.pop_back();
         }
 

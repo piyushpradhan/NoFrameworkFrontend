@@ -1,17 +1,16 @@
-use reqwest::cookie::Jar;
-use reqwest::{Client, Url};
 use serde_json;
+use std::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use reqwest::header::{HeaderValue, CONTENT_TYPE};
 use wasm_bindgen::prelude::*;
-use web_sys::{window, Event, HtmlElement};
+use web_sys::{window, Event, HtmlElement, HtmlInputElement, KeyboardEvent};
 
 use crate::components::component::Component;
+use crate::models::login_input::LoginInput;
 use crate::routers::router::Router;
 use crate::store;
-use crate::utils::storage::set_item;
 use crate::utils::{api, Element};
 
 use crate::models::user::User;
@@ -28,31 +27,23 @@ struct LoginResponse {
 pub struct Login {}
 
 impl Login {
-    pub fn new() -> Login {
+    pub fn new() -> Self {
+        let _ = store::get::<LoginInput>();
         Login {}
     }
 
-    pub async fn handle_login(&mut self) {
+    pub async fn handle_login(&self) {
         let router = store::get::<Router>();
 
-        let mut payload = HashMap::new();
-        payload.insert("username", "latest_user");
-        payload.insert("password", "strong_password");
-
-        let mut error = HashMap::new();
-        error.insert(
-            "message",
-            "Something went wrong while parsing the user data",
-        );
-
         let mut headers = reqwest::header::HeaderMap::new();
-
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-        let data = r#"{
-            "username": "latest_user",
-            "password": "strong_password"
-        }"#;
+        let login_input = store::get::<LoginInput>();
+
+        let data = format!(
+            r#"{{ "username": "{}", "password": "{}" }}"#,
+            login_input.username, login_input.password
+        );
 
         let json: serde_json::Value = serde_json::from_str(&data).unwrap();
 
@@ -66,15 +57,6 @@ impl Login {
 
                     let json_response: LoginResponse = serde_json::from_str(&body_str).unwrap();
 
-                    let cookie = format!(
-                        "token={};refresh={}",
-                        json_response.access_token, json_response.refresh_token
-                    );
-
-                    // Set cookie to local storage
-                    let jar = store::get::<Arc<Jar>>();
-                    jar.add_cookie_str(&cookie, &"http://localhost:7878".parse::<Url>().unwrap());
-
                     store::set::<User>(User::new(
                         json_response.id,
                         json_response.username,
@@ -87,8 +69,6 @@ impl Login {
                 println!("Error sending request: {}", err);
             }
         }
-
-        let _ = api::get("http://localhost:7878/test", headers.clone()).await;
 
         router.render("/home");
     }
@@ -107,39 +87,94 @@ impl Component for Login {
         let mut heading = Element::new("h2");
         let mut login_form = Element::new("form");
 
-        let mut username_label = Element::new("label");
+        let mut username_row = Element::new("tr");
+        let mut username_label = Element::new("td");
+        let mut username_container = Element::new("td");
         let mut username_input = Element::new("input");
 
-        let mut password_label = Element::new("label");
+        let mut password_row = Element::new("tr");
+        let mut password_label = Element::new("td");
+        let mut password_container = Element::new("td");
         let mut password_input = Element::new("input");
 
+        let mut submit_button_row = Element::new("tr");
+        let mut submit_button_container = Element::new("td");
         let mut submit_button = Element::new("button");
+
+        let mut form_table = Element::new("table");
+
+        form_table.set(|table: &HtmlElement| {
+            table.set_attribute("cellspacing", "10").unwrap();
+        });
 
         heading.set(|h2: &HtmlElement| {
             h2.set_inner_text("Login");
         });
 
         username_label.set(|label: &HtmlElement| {
-            label.set_attribute("for", "username").unwrap();
-            label.set_inner_text("Username")
+            label.set_attribute("align", "right").unwrap();
+            label.set_inner_text("Username: ");
         });
 
-        username_input.set(|input: &HtmlElement| {
-            input.set_id("username");
-            input.set_attribute("type", "text").unwrap();
-            input.set_attribute("name", "username").unwrap();
-            input.set_attribute("placeholder", "Username").unwrap();
-        });
+        username_input
+            .set(|input: &HtmlElement| {
+                input.set_id("username");
+                input.set_attribute("type", "text").unwrap();
+                input.set_attribute("name", "username").unwrap();
+                input.set_attribute("placeholder", "Username").unwrap();
+            })
+            .set(|input: &HtmlElement| {
+                let handler = Closure::wrap(Box::new(|e: Event| {
+                    let input = e
+                        .current_target()
+                        .unwrap()
+                        .dyn_into::<HtmlInputElement>()
+                        .unwrap();
+
+                    let mut login_input = store::get::<LoginInput>();
+                    login_input.set_username(input.value());
+                }) as Box<dyn FnMut(_)>);
+
+                input
+                    .add_event_listener_with_callback("input", &handler.as_ref().unchecked_ref())
+                    .unwrap();
+
+                handler.forget();
+            });
 
         password_label.set(|label: &HtmlElement| {
-            label.set_attribute("for", "password").unwrap();
-            label.set_inner_text("Password")
+            label.set_attribute("align", "right").unwrap();
+            label.set_inner_text("Password: ")
         });
-        password_input.set(|input: &HtmlElement| {
-            input.set_id("password");
-            input.set_attribute("type", "password").unwrap();
-            input.set_attribute("name", "password").unwrap();
-            input.set_attribute("placeholder", "password").unwrap();
+        password_input
+            .set(|input: &HtmlElement| {
+                input.set_id("password");
+                input.set_attribute("type", "password").unwrap();
+                input.set_attribute("name", "password").unwrap();
+                input.set_attribute("placeholder", "password").unwrap();
+            })
+            .set(|input: &HtmlElement| {
+                let handler = Closure::wrap(Box::new(|e: Event| {
+                    let input = e
+                        .current_target()
+                        .unwrap()
+                        .dyn_into::<HtmlInputElement>()
+                        .unwrap();
+
+                    let mut login_input = store::get::<LoginInput>();
+                    login_input.set_password(input.value());
+                }) as Box<dyn FnMut(_)>);
+
+                input
+                    .add_event_listener_with_callback("input", &handler.as_ref().unchecked_ref())
+                    .unwrap();
+
+                handler.forget();
+            });
+
+        submit_button_container.set(|container: &HtmlElement| {
+            container.set_attribute("colspan", "2").unwrap();
+            container.set_attribute("align", "center").unwrap();
         });
 
         submit_button.set(|button: &HtmlElement| {
@@ -167,13 +202,30 @@ impl Component for Login {
 
                 handler.forget();
             })
-            .child(username_label.build())
-            .child(username_input.build())
-            .child(password_label.build())
-            .child(password_input.build())
-            .child(submit_button.build())
+            .child(
+                form_table
+                    .child(
+                        username_row
+                            .child(username_label.build())
+                            .child(username_container.child(username_input.build()).build())
+                            .build(),
+                    )
+                    .child(
+                        password_row
+                            .child(password_label.build())
+                            .child(password_container.child(password_input.build()).build())
+                            .build(),
+                    )
+                    .child(
+                        submit_button_row
+                            .child(submit_button_container.child(submit_button.build()).build())
+                            .build(),
+                    )
+                    .build(),
+            )
             .build();
 
+        container.set_attribute("align", "center").unwrap();
         container.append_child(&heading.build()).unwrap();
         container.append_child(&built_login_form).unwrap();
 

@@ -52,3 +52,11 @@ impl Element {
         element
     }
 }
+
+impl Clone for Element {
+    fn clone(&self) -> Self {
+        Element {
+            element: self.element.clone(),
+        }
+    }
+}
