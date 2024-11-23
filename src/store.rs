@@ -1,53 +1,62 @@
 use spin::{Mutex, MutexGuard};
+use std::sync::OnceLock;
 use std::{
     any::{Any, TypeId},
-    collections::LinkedList,
+    collections::HashMap,
 };
 
-static GLOBALS_LIST: Mutex<LinkedList<(TypeId, &'static Mutex<dyn Any + Send + Sync>)>> =
-    Mutex::new(LinkedList::new());
+// Store concrete types rather than trait objects
+static GLOBALS_LIST: OnceLock<Mutex<HashMap<TypeId, &'static (dyn Any + Send + Sync)>>> =
+    OnceLock::new();
 
 pub fn get<T>() -> MutexGuard<'static, T>
 where
-    T: 'static + Default + Send + core::marker::Sync,
+    T: 'static + Default + Send + Sync,
 {
+    let globals = GLOBALS_LIST.get_or_init(|| Mutex::new(HashMap::new()));
     {
-        let mut globals = GLOBALS_LIST.lock();
-        let id = TypeId::of::<T>();
-        let p = globals.iter().find(|&r| r.0 == id);
-        if let Some(v) = p {
-            let m = unsafe { &*(v.1 as *const Mutex<dyn Any + Send + Sync> as *const Mutex<T>) };
-            return m.lock();
+        let mut globals = globals.lock();
+        let type_id = TypeId::of::<T>();
+
+        if let Some(value) = globals.get(&type_id) {
+            // Safe downcast from &dyn Any to &Mutex<T>
+            let mutex = value
+                .downcast_ref::<Mutex<T>>()
+                .expect("Type mismatch in global storage");
+            return mutex.lock();
         }
-        let v = Box::new(Mutex::new(T::default()));
-        let handle = Box::leak(v);
-        globals.push_front((id, handle));
+
+        // Initialize new value if not present
+        let new_mutex = Box::new(Mutex::new(T::default()));
+        let leaked_mutex: &'static Mutex<T> = Box::leak(new_mutex);
+        globals.insert(type_id, leaked_mutex);
     }
+    // Recursive call to get the newly inserted value
     get()
 }
 
 pub fn set<T>(data: T)
 where
-    T: 'static + Default + Send + core::marker::Sync,
+    T: 'static + Default + Send + Sync,
 {
+    let globals = GLOBALS_LIST.get_or_init(|| Mutex::new(HashMap::new()));
     {
-        let mut globals = GLOBALS_LIST.lock();
+        let mut globals = globals.lock();
         let type_id = TypeId::of::<T>();
-        let mut found_index = None;
 
-        for (index, &stored_type_id) in globals.iter().enumerate() {
-            if stored_type_id.0 == type_id {
-                found_index = Some(index);
-                break;
-            }
-        }
+        // Create and insert new mutex
+        let new_mutex = Box::new(Mutex::new(data));
+        let leaked_mutex: &'static Mutex<T> = Box::leak(new_mutex);
+        globals.insert(type_id, leaked_mutex);
+    }
+}
 
-        if let Some(_index) = found_index {
-            globals.pop_back();
-        }
-
-        let updated_mutex = Box::new(Mutex::new(data));
-        let leaked_mutex = Box::leak(updated_mutex);
-        globals.push_front((type_id, leaked_mutex));
+pub fn remove<T>()
+where
+    T: 'static + Default + Send + Sync,
+{
+    if let Some(globals) = GLOBALS_LIST.get() {
+        let mut globals = globals.lock();
+        globals.remove(&TypeId::of::<T>());
     }
 }
